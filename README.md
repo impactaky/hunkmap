@@ -60,7 +60,7 @@ command also requires the `herdr` and `hunk` executables:
 hunkmap --repo /path/to/repo herdr
 ```
 
-It opens a purpose-grouped Review Rail beside Hunk. Hunk receives only the
+It opens a chapter-organized Review Rail beside Hunk. Hunk receives only the
 selected review unit, so scrolling a long patch cannot move the semantic map.
 
 ```text
