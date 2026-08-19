@@ -6,7 +6,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
-from hunkmap.ui import ReviewRailApp
+from textual.widgets import ListView
+
+from hunkmap.ui import ReviewRailApp, ReviewRow
 
 
 @dataclass
@@ -126,6 +128,46 @@ class ReviewRailAppTest(unittest.IsolatedAsyncioTestCase):
                 await pilot.pause()
                 self.assertEqual(project.state["reviewed"], ["hm-two"])
                 self.assertEqual(app.current, 2)
+
+    async def test_moving_cursor_to_closed_chapter_expands_it(self) -> None:
+        project = FakeProject()
+        with TemporaryDirectory() as directory:
+            app = ReviewRailApp(
+                project,  # type: ignore[arg-type]
+                Path(directory),
+                "hunk",
+                "session",
+                patch_reloader=lambda _hunk, _session, _path: None,
+            )
+            async with app.run_test(size=(72, 24)) as pilot:
+                await pilot.pause()
+                self.assertEqual(app.expanded, "Core")
+
+                rail = app.query_one("#rail", ListView)
+                chapter = app.query_one("#group-1", ReviewRow)
+                rail.index = list(rail.children).index(chapter)
+                await pilot.pause()
+
+                self.assertEqual(app.expanded, "Adapter")
+                self.assertEqual(rail.highlighted_child.id, "group-1")
+                self.assertIsNotNone(app.query_one("#unit-2", ReviewRow))
+                self.assertEqual(app.current, 0)
+
+    async def test_click_that_moves_to_closed_chapter_leaves_it_open(self) -> None:
+        project = FakeProject()
+        with TemporaryDirectory() as directory:
+            app = ReviewRailApp(
+                project,  # type: ignore[arg-type]
+                Path(directory),
+                "hunk",
+                "session",
+                patch_reloader=lambda _hunk, _session, _path: None,
+            )
+            async with app.run_test(size=(72, 24)) as pilot:
+                await pilot.pause()
+                self.assertTrue(await pilot.click("#group-1"))
+                await pilot.pause()
+                self.assertEqual(app.expanded, "Adapter")
 
     async def test_stale_diff_blocks_review_state_changes(self) -> None:
         project = FakeProject()

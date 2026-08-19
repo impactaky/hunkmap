@@ -58,6 +58,11 @@ def write_patch(project: ReviewProject, runtime: Path, index: int) -> Path:
 class ReviewRow(ListItem):
     """One purpose group or review unit in the rail."""
 
+    class Clicked(Message):
+        def __init__(self, row: ReviewRow) -> None:
+            self.row = row
+            super().__init__()
+
     class RightClicked(Message):
         def __init__(self, row: ReviewRow) -> None:
             self.row = row
@@ -73,7 +78,9 @@ class ReviewRow(ListItem):
             event.stop()
             self.post_message(self.RightClicked(self))
             return
-        super()._on_click(event)
+        if event.button == 1:
+            event.stop()
+            self.post_message(self.Clicked(self))
 
 
 class ReviewOverlay(ModalScreen[None]):
@@ -284,7 +291,9 @@ class ReviewRailApp(App[None]):
         )
         self.query_one("#message", Static).update(self.message)
 
-    def _make_rows(self) -> tuple[list[ReviewRow], int]:
+    def _make_rows(
+        self, highlight: tuple[str, str | int] | None = None
+    ) -> tuple[list[ReviewRow], int]:
         rows: list[ReviewRow] = []
         selected_row = 0
         current_group = self._group_for(self.current)
@@ -302,6 +311,8 @@ class ReviewRailApp(App[None]):
             if name == current_group:
                 group_row.add_class("current-group")
             rows.append(group_row)
+            if highlight == ("group", name):
+                selected_row = len(rows) - 1
             if name != self.expanded:
                 continue
             for index in members:
@@ -328,11 +339,13 @@ class ReviewRailApp(App[None]):
                     row.add_class("current")
                     selected_row = len(rows)
                 rows.append(row)
+                if highlight == ("unit", index):
+                    selected_row = len(rows) - 1
         return rows, selected_row
 
-    def _rebuild_rows(self) -> None:
+    def _rebuild_rows(self, highlight: tuple[str, str | int] | None = None) -> None:
         rail = self.query_one("#rail", ListView)
-        rows, selected_row = self._make_rows()
+        rows, selected_row = self._make_rows(highlight)
         self._updating_rows = True
 
         async def replace() -> None:
@@ -341,7 +354,7 @@ class ReviewRailApp(App[None]):
             rail.index = selected_row
             self._updating_rows = False
 
-        self.run_worker(replace(), exclusive=True, group="rows")
+        self.run_worker(replace, exclusive=True, group="rows")
         self._refresh_header()
 
     def _select(self, index: int) -> None:
@@ -379,6 +392,22 @@ class ReviewRailApp(App[None]):
             return
         if event.item.kind == "unit":
             self._select(int(event.item.value))
+        elif event.item.kind == "group":
+            name = str(event.item.value)
+            if self.expanded != name:
+                self.expanded = name
+                self._rebuild_rows(highlight=("group", name))
+
+    @on(ReviewRow.Clicked)
+    def _clicked(self, event: ReviewRow.Clicked) -> None:
+        rail = self.query_one("#rail", ListView)
+        rail.focus()
+        if event.row.kind == "group":
+            name = str(event.row.value)
+            self.expanded = None if self.expanded == name else name
+            self._rebuild_rows(highlight=("group", name))
+        else:
+            rail.index = list(rail.children).index(event.row)
 
     @on(ListView.Selected)
     def _selected(self, event: ListView.Selected) -> None:
@@ -387,13 +416,7 @@ class ReviewRailApp(App[None]):
         if event.item.kind == "group":
             name = str(event.item.value)
             self.expanded = None if self.expanded == name else name
-            if self._group_for(self.current) != name:
-                members = next(
-                    members for group, members in self._group_rows() if group == name
-                )
-                self.current = members[0]
-                self._reload_current_patch()
-            self._rebuild_rows()
+            self._rebuild_rows(highlight=("group", name))
 
     @on(ReviewRow.RightClicked)
     def _right_clicked(self, event: ReviewRow.RightClicked) -> None:
