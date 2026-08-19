@@ -1,0 +1,21 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "hunkmap"
+version = "0.1.0"
+description = "Coverage-checked semantic review maps for Git diffs"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [{ name = "impactaky" }]
+dependencies = [
+    "textual>=8.2.8",
+]
+
+[project.scripts]
+hunkmap = "hunkmap.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/hunkmap"]

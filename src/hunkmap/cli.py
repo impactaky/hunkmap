@@ -1,0 +1,139 @@
+"""Command-line interface for hunkmap."""
+
+from __future__ import annotations
+
+import argparse
+import json
+from pathlib import Path
+import sys
+
+from hunkmap.store import HunkMapError, ReviewProject
+
+
+def project_from(args: argparse.Namespace) -> ReviewProject:
+    return ReviewProject.discover(args.repo, args.state_dir)
+
+
+def coverage_text(project: ReviewProject) -> str:
+    coverage = project.coverage()
+    return "\n".join((
+        f"FILES       {coverage.files_mapped}/{coverage.files_total}",
+        f"HUNKS       {coverage.hunks_mapped}/{coverage.hunks_total}",
+        f"MISSING     {len(coverage.missing)}",
+        f"DUPLICATE   {len(coverage.duplicate)}",
+        f"EXTRA       {len(coverage.extra)}",
+        f"MISMATCH    {len(coverage.mismatch)}",
+        f"DIFF        {'STALE' if coverage.stale else 'clean'}",
+    ))
+
+
+def context_markdown(project: ReviewProject, include_patches: bool) -> str:
+    manifest = project.load_manifest()
+    state = project.load_state()
+    reviewed = set(state.get("reviewed", []))
+    units = {unit.id: unit for unit in project.units()}
+    lines = [f"# {manifest.get('goal') or 'Diff review'}", "", "## Coverage", "", "```text", coverage_text(project), "```"]
+    groups: dict[str, list[dict]] = {}
+    for entry in manifest["hunks"]:
+        groups.setdefault(entry.get("group") or "Unassigned", []).append(entry)
+    for group, entries in groups.items():
+        lines.extend(("", f"## {group}", ""))
+        for entry in entries:
+            mark = "x" if entry["id"] in reviewed else " "
+            lines.append(f"- [{mark}] `{entry['id']}` {entry['label']} — {entry.get('why') or 'WHY未設定'}")
+            if include_patches:
+                lines.extend(("", "```diff", units[entry["id"]].patch.decode("utf-8", "replace").rstrip(), "```", ""))
+    return "\n".join(lines) + "\n"
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(prog="hunkmap", description="Coverage-checked semantic Git diff review")
+    parser.add_argument("--repo", type=Path, help="path inside the Git repository")
+    parser.add_argument("--state-dir", type=Path, help="review state directory (default: Git metadata directory)")
+    sub = parser.add_subparsers(dest="command", required=True)
+
+    init = sub.add_parser("init", help="snapshot the current diff")
+    init.add_argument("--base", default="HEAD")
+
+    sub.add_parser("refresh", help="refresh the snapshot and preserve unchanged annotations")
+    sub.add_parser("check", help="fail unless coverage is exact and the diff is current")
+    sub.add_parser("status", help="show coverage and review progress")
+    sub.add_parser("list", help="list review units")
+
+    show = sub.add_parser("show", help="print one review unit as a patch")
+    show.add_argument("selector")
+
+    annotate = sub.add_parser("annotate", help="set semantic metadata for one unit")
+    annotate.add_argument("selector")
+    annotate.add_argument("--group")
+    annotate.add_argument("--label")
+    annotate.add_argument("--why")
+    annotate.add_argument("--safety")
+    annotate.add_argument("--evidence")
+
+    goal = sub.add_parser("goal", help="set the review goal")
+    goal.add_argument("text")
+
+    review = sub.add_parser("review", help="mark a unit reviewed")
+    review.add_argument("selector")
+    unreview = sub.add_parser("unreview", help="clear reviewed state")
+    unreview.add_argument("selector")
+
+    context = sub.add_parser("context", help="emit organized review context")
+    context.add_argument("--patches", action="store_true")
+
+    sub.add_parser("herdr", help="open the interactive Review Rail in Herdr")
+    return parser
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = build_parser()
+    args = parser.parse_args(argv)
+    try:
+        project = project_from(args)
+        if args.command == "init":
+            project.initialize(args.base)
+            print(f"Initialized {project.state_dir}")
+            print(coverage_text(project))
+        elif args.command == "refresh":
+            project.refresh()
+            print(f"Refreshed {project.state_dir}")
+            print(coverage_text(project))
+        elif args.command == "check":
+            print(coverage_text(project))
+            return 0 if project.coverage().ok else 1
+        elif args.command == "status":
+            state = project.load_state()
+            print(coverage_text(project))
+            print(f"REVIEWED    {len(state.get('reviewed', []))}/{len(project.load_manifest()['hunks'])}")
+        elif args.command == "list":
+            reviewed = set(project.load_state().get("reviewed", []))
+            for index, entry in enumerate(project.load_manifest()["hunks"], 1):
+                mark = "x" if entry["id"] in reviewed else " "
+                print(f"{index:>3} [{mark}] {entry['id']}  {entry['group']}  {entry['label']}")
+        elif args.command == "show":
+            sys.stdout.buffer.write(project.unit_for(args.selector).patch)
+        elif args.command == "annotate":
+            entry = project.annotate(
+                args.selector, group=args.group, label=args.label, why=args.why,
+                safety=args.safety, evidence=args.evidence,
+            )
+            print(f"Updated {entry['id']}")
+        elif args.command == "goal":
+            project.set_goal(args.text)
+            print("Goal updated")
+        elif args.command == "review":
+            entry = project.set_reviewed(args.selector, True)
+            print(f"Reviewed {entry['id']}")
+        elif args.command == "unreview":
+            entry = project.set_reviewed(args.selector, False)
+            print(f"Unreviewed {entry['id']}")
+        elif args.command == "context":
+            print(context_markdown(project, args.patches), end="")
+        elif args.command == "herdr":
+            from hunkmap.herdr import launch
+            launch(project)
+        return 0
+    except HunkMapError as error:
+        print(f"hunkmap: {error}", file=sys.stderr)
+        return 2
