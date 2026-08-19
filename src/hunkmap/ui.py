@@ -32,14 +32,32 @@ def groups(entries: list[dict[str, Any]]) -> list[tuple[str, list[int]]]:
     return ordered
 
 
+def review_order(entries: list[dict[str, Any]]) -> list[int]:
+    """Return manifest indices in the same order shown by the Review Map."""
+    return [index for _chapter, members in groups(entries) for index in members]
+
+
+def adjacent_review_unit(
+    current: int,
+    entries: list[dict[str, Any]],
+    direction: int,
+) -> int:
+    order = review_order(entries)
+    position = order.index(current)
+    target = max(0, min(len(order) - 1, position + direction))
+    return order[target]
+
+
 def next_unreviewed(
     current: int,
     reviewed: set[str],
     entries: list[dict[str, Any]],
     direction: int = 1,
 ) -> int | None:
-    for offset in range(1, len(entries) + 1):
-        candidate = (current + direction * offset) % len(entries)
+    order = review_order(entries)
+    position = order.index(current)
+    for offset in range(1, len(order) + 1):
+        candidate = order[(position + direction * offset) % len(order)]
         if entries[candidate]["id"] not in reviewed:
             return candidate
     return None
@@ -434,16 +452,16 @@ class ReviewRailApp(App[None]):
         self.action_previous_unit()
 
     def action_next_unit(self) -> None:
-        self._select(self.current + 1)
+        self._select(adjacent_review_unit(self.current, self.entries, 1))
 
     def action_previous_unit(self) -> None:
-        self._select(self.current - 1)
+        self._select(adjacent_review_unit(self.current, self.entries, -1))
 
     def action_first(self) -> None:
-        self._select(0)
+        self._select(review_order(self.entries)[0])
 
     def action_last(self) -> None:
-        self._select(len(self.entries) - 1)
+        self._select(review_order(self.entries)[-1])
 
     def action_fold(self) -> None:
         self.expanded = None

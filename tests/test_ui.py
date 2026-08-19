@@ -108,6 +108,49 @@ class ReviewRailAppTest(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual(app.current, 2)
                 self.assertEqual(project.state["reviewed"], ["hm-two"])
 
+    async def test_navigation_follows_chapter_order_not_raw_diff_order(self) -> None:
+        project = FakeProject()
+        project.manifest["hunks"][1]["group"] = "Adapter"
+        project.manifest["hunks"][2]["group"] = "Core"
+        reloads: list[bytes] = []
+        with TemporaryDirectory() as directory:
+            app = ReviewRailApp(
+                project,  # type: ignore[arg-type]
+                Path(directory),
+                "hunk",
+                "session",
+                patch_reloader=lambda _hunk, _session, path: reloads.append(
+                    path.read_bytes()
+                ),
+            )
+            async with app.run_test(size=(72, 24)) as pilot:
+                await pilot.pause()
+
+                await pilot.press("j")
+                await pilot.pause()
+                self.assertEqual(app.current, 2)
+                self.assertEqual(reloads[-1], b"patch for hm-three\n")
+
+                await pilot.press("j")
+                await pilot.pause()
+                self.assertEqual(app.current, 1)
+
+                await pilot.press("k")
+                await pilot.pause()
+                self.assertEqual(app.current, 2)
+
+                app.action_first()
+                await pilot.pause()
+                self.assertEqual(app.current, 0)
+                await pilot.press("a")
+                await pilot.pause()
+                self.assertEqual(project.state["reviewed"], ["hm-one"])
+                self.assertEqual(app.current, 2)
+
+                app.action_last()
+                await pilot.pause()
+                self.assertEqual(app.current, 1)
+
     async def test_mouse_selects_and_right_click_reviews_then_advances(self) -> None:
         project = FakeProject()
         with TemporaryDirectory() as directory:
