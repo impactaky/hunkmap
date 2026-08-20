@@ -8,6 +8,7 @@ from pathlib import Path
 import subprocess
 import tempfile
 import unittest
+from unittest.mock import patch
 
 from hunkmap.cli import main
 
@@ -44,6 +45,10 @@ class CliTest(unittest.TestCase):
             self.assertIn("SEMANTIC    ", not_ready.getvalue())
             self.assertIn("goal is empty", not_ready.getvalue())
             self.assertIn("label is unset", not_ready.getvalue())
+            with patch("hunkmap.herdr.launch") as launch:
+                with redirect_stdout(io.StringIO()):
+                    self.assertEqual(main(["--repo", str(repo), "open"]), 1)
+                launch.assert_not_called()
 
             document = {
                 "goal": "Ship one coherent result",
@@ -89,6 +94,12 @@ class CliTest(unittest.TestCase):
             with redirect_stdout(ready):
                 self.assertEqual(main(["--repo", str(repo), "check", "--ready"]), 0)
             self.assertIn("SEMANTIC    ready", ready.getvalue())
+            with patch("hunkmap.herdr.launch") as launch:
+                opened = io.StringIO()
+                with redirect_stdout(opened):
+                    self.assertEqual(main(["--repo", str(repo), "open"]), 0)
+                launch.assert_called_once()
+                self.assertIn("SEMANTIC    ready", opened.getvalue())
 
             before_invalid = (state_dir / "manifest.json").read_bytes()
             invalid_maps: list[tuple[dict, str]] = []

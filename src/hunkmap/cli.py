@@ -27,6 +27,17 @@ def coverage_text(project: ReviewProject, coverage=None) -> str:
     ))
 
 
+def report_check(project: ReviewProject, require_ready: bool) -> bool:
+    coverage = project.coverage()
+    print(coverage_text(project, coverage))
+    issues = project.semantic_issues() if require_ready else ()
+    if require_ready:
+        print(f"SEMANTIC    {'ready' if not issues else f'{len(issues)} issue(s)'}")
+        for issue in issues:
+            print(f"  - {issue}")
+    return coverage.ok and not issues
+
+
 def context_markdown(project: ReviewProject, include_patches: bool) -> str:
     manifest = project.load_manifest()
     state = project.load_state()
@@ -98,6 +109,7 @@ def build_parser() -> argparse.ArgumentParser:
     context = sub.add_parser("context", help="emit organized review context")
     context.add_argument("--patches", action="store_true")
 
+    sub.add_parser("open", help="check semantic readiness and open the Review Rail in Herdr")
     sub.add_parser("herdr", help="open the interactive Review Rail in Herdr")
     return parser
 
@@ -126,14 +138,7 @@ def main(argv: list[str] | None = None) -> int:
             print(f"Refreshed {project.state_dir}")
             print(coverage_text(project))
         elif args.command == "check":
-            coverage = project.coverage()
-            print(coverage_text(project, coverage))
-            issues = project.semantic_issues() if args.ready else ()
-            if args.ready:
-                print(f"SEMANTIC    {'ready' if not issues else f'{len(issues)} issue(s)'}")
-                for issue in issues:
-                    print(f"  - {issue}")
-            return 0 if coverage.ok and not issues else 1
+            return 0 if report_check(project, args.ready) else 1
         elif args.command == "status":
             state = project.load_state()
             print(coverage_text(project))
@@ -165,6 +170,11 @@ def main(argv: list[str] | None = None) -> int:
             print(f"Unreviewed {entry['id']}")
         elif args.command == "context":
             print(context_markdown(project, args.patches), end="")
+        elif args.command == "open":
+            if not report_check(project, True):
+                return 1
+            from hunkmap.herdr import launch
+            launch(project)
         elif args.command == "herdr":
             from hunkmap.herdr import launch
             launch(project)

@@ -8,12 +8,9 @@ hunk IDs, so changed hunks lose their reviewed status after refresh.
 
 ```bash
 uv run hunkmap --repo /path/to/repo sync --base HEAD
-uv run hunkmap --repo /path/to/repo check
-uv run hunkmap --repo /path/to/repo list
+uv run hunkmap --repo /path/to/repo context --patches
 uv run hunkmap --repo /path/to/repo apply-map /tmp/hunkmap-review-map.json
-uv run hunkmap --repo /path/to/repo review 1
-uv run hunkmap --repo /path/to/repo context
-uv run hunkmap --repo /path/to/repo herdr
+uv run hunkmap --repo /path/to/repo open
 ```
 
 The default local state is kept under Git's metadata directory, so it does not
@@ -78,17 +75,18 @@ empty fields reject the whole document without changing the manifest. Omit the
 path to read JSON from stdin. `goal` and `annotate` remain available for focused
 manual edits.
 
-Use `check --ready` before opening a review. It keeps the exact/current diff
-checks and additionally rejects an empty goal, unassigned chapters, generated
-placeholder labels, and empty Why, Safety, or Evidence fields.
+`open` runs the exact/current diff checks and additionally rejects an empty
+goal, unassigned chapters, generated placeholder labels, and empty Why, Safety,
+or Evidence fields. It opens the Review Rail only when all checks pass. Use
+`check --ready` to run the same validation without opening anything.
 
 ## Interactive review
 
-The CLI uses Textual for its interactive Review Rail. The optional `herdr`
-command also requires the `herdr` and `hunk` executables:
+The CLI uses Textual for its interactive Review Rail. `open` and the lower-level
+`herdr` command require the `herdr` and `hunk` executables:
 
 ```bash
-hunkmap --repo /path/to/repo herdr
+hunkmap --repo /path/to/repo open
 ```
 
 It opens a chapter-organized Review Rail beside Hunk. hunkmap materializes only
