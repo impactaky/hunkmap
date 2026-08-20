@@ -6,6 +6,7 @@ import argparse
 import json
 from pathlib import Path
 import sys
+import tempfile
 
 from hunkmap.store import HunkMapError, ReviewProject
 
@@ -57,6 +58,40 @@ def context_markdown(project: ReviewProject, include_patches: bool) -> str:
     return "\n".join(lines) + "\n"
 
 
+def review_map_document(project: ReviewProject) -> dict:
+    manifest = project.load_manifest()
+    chapters: list[dict] = []
+    positions: dict[str, int] = {}
+    for entry in manifest["hunks"]:
+        name = entry.get("group") or "Unassigned"
+        if name not in positions:
+            positions[name] = len(chapters)
+            chapters.append({"name": name, "units": []})
+        chapters[positions[name]]["units"].append({
+            "id": entry["id"],
+            "label": entry.get("label") or "",
+            "why": entry.get("why") or "",
+            "safety": entry.get("safety") or "",
+            "evidence": entry.get("evidence") or "",
+        })
+    return {"goal": manifest.get("goal") or "", "chapters": chapters}
+
+
+def write_draft_map(project: ReviewProject) -> Path:
+    if not project.coverage().ok:
+        raise HunkMapError("coverage is incomplete or the diff is stale; run sync")
+    with tempfile.NamedTemporaryFile(
+        mode="w",
+        encoding="utf-8",
+        prefix=f"hunkmap-{project.repo.name}-",
+        suffix=".json",
+        delete=False,
+    ) as handle:
+        json.dump(review_map_document(project), handle, ensure_ascii=False, indent=2)
+        handle.write("\n")
+        return Path(handle.name)
+
+
 def read_json(path: str) -> object:
     try:
         if path == "-":
@@ -100,6 +135,8 @@ def build_parser() -> argparse.ArgumentParser:
 
     apply_map = sub.add_parser("apply-map", help="atomically apply a complete semantic review map")
     apply_map.add_argument("path", nargs="?", default="-", help="JSON file (default: stdin)")
+
+    sub.add_parser("draft-map", help="write an editable review map JSON to a temporary file")
 
     review = sub.add_parser("review", help="mark a unit reviewed")
     review.add_argument("selector")
@@ -162,6 +199,8 @@ def main(argv: list[str] | None = None) -> int:
         elif args.command == "apply-map":
             chapters, units = project.apply_map(read_json(args.path))
             print(f"Applied {chapters} chapters to {units} review units")
+        elif args.command == "draft-map":
+            print(write_draft_map(project))
         elif args.command == "review":
             entry = project.set_reviewed(args.selector, True)
             print(f"Reviewed {entry['id']}")

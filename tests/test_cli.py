@@ -39,6 +39,18 @@ class CliTest(unittest.TestCase):
             initial = json.loads((state_dir / "manifest.json").read_text())
             first, second = initial["hunks"]
 
+            drafted = io.StringIO()
+            with redirect_stdout(drafted):
+                self.assertEqual(main(["--repo", str(repo), "draft-map"]), 0)
+            draft_path = Path(drafted.getvalue().strip())
+            self.addCleanup(draft_path.unlink, missing_ok=True)
+            draft = json.loads(draft_path.read_text())
+            self.assertEqual(draft["goal"], "")
+            self.assertEqual([unit["id"] for unit in draft["chapters"][0]["units"]], [
+                first["id"], second["id"],
+            ])
+            self.assertEqual(draft["chapters"][0]["name"], "Unassigned")
+
             not_ready = io.StringIO()
             with redirect_stdout(not_ready):
                 self.assertEqual(main(["--repo", str(repo), "check", "--ready"]), 1)
@@ -89,6 +101,13 @@ class CliTest(unittest.TestCase):
             self.assertEqual([item["group"] for item in applied["hunks"]], [
                 "Second purpose first", "First purpose second",
             ])
+
+            redrafted = io.StringIO()
+            with redirect_stdout(redrafted):
+                self.assertEqual(main(["--repo", str(repo), "draft-map"]), 0)
+            redraft_path = Path(redrafted.getvalue().strip())
+            self.addCleanup(redraft_path.unlink, missing_ok=True)
+            self.assertEqual(json.loads(redraft_path.read_text()), document)
 
             ready = io.StringIO()
             with redirect_stdout(ready):

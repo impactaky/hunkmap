@@ -9,6 +9,8 @@ hunk IDs, so changed hunks lose their reviewed status after refresh.
 ```bash
 uv run hunkmap --repo /path/to/repo sync --base HEAD
 uv run hunkmap --repo /path/to/repo context --patches
+uv run hunkmap --repo /path/to/repo draft-map
+# Edit the printed temporary JSON path.
 uv run hunkmap --repo /path/to/repo apply-map /tmp/hunkmap-review-map.json
 uv run hunkmap --repo /path/to/repo open
 ```
@@ -50,8 +52,10 @@ point each time. Annotations and reviewed state survive only for unchanged hunk
 IDs. `init` and `refresh` remain available when the explicit distinction is
 useful.
 
-Apply the complete semantic map atomically from JSON. Chapter and unit order in
-the document becomes the Review Rail order:
+`draft-map` writes the current units and annotations to a unique temporary JSON
+file and prints its path. Edit that file, then apply the complete semantic map
+atomically. Chapter and unit order in the document becomes the Review Rail
+order:
 
 ```json
 {
