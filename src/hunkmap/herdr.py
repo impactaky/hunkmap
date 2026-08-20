@@ -11,7 +11,7 @@ import sys
 import tempfile
 import time
 
-from hunkmap.hunk import run
+from hunkmap.hunk import create_review_source, prepare_review_source, run
 from hunkmap.store import HunkMapError, ReviewProject
 
 
@@ -61,7 +61,7 @@ def find_hunk() -> str:
 def launch(project: ReviewProject) -> None:
     coverage = project.coverage()
     if not coverage.ok:
-        raise HunkMapError("coverage is incomplete or the diff is stale; run `hunkmap check` and `hunkmap refresh`")
+        raise HunkMapError("coverage is incomplete or the diff is stale; run `hunkmap sync`")
     workspace = os.environ.get("HERDR_WORKSPACE_ID")
     if not workspace or not shutil.which("herdr"):
         raise HunkMapError("Herdr is not available in this terminal")
@@ -69,7 +69,8 @@ def launch(project: ReviewProject) -> None:
     runtime = Path(tempfile.mkdtemp(prefix="hunkmap-herdr-"))
     first_patch = runtime / "selected.patch"
     first_patch.write_bytes(project.units()[0].patch)
-    subprocess.run(("git", "init", "--quiet", str(runtime)), check=True)
+    source = create_review_source(project.repo, project.load_manifest()["base"], runtime / "source")
+    prepare_review_source(source, first_patch)
 
     created = herdr_json(
         "tab", "create", "--workspace", workspace, "--cwd", str(project.repo),
@@ -77,11 +78,11 @@ def launch(project: ReviewProject) -> None:
     )["result"]
     tab = created["tab"]["tab_id"]
     rail = created["root_pane"]["pane_id"]
-    diff_pane = split(workspace, rail, "right", "0.40", runtime)
+    diff_pane = split(workspace, rail, "right", "0.40", source)
     hunk = find_hunk()
     run(
-        "herdr", "pane", "run", diff_pane, hunk, "patch", str(first_patch),
-        "--pager", "--hunk-headers", "--mode", "stack", "--no-wrap",
+        "herdr", "pane", "run", diff_pane, hunk, "diff",
+        "--pager", "--hunk-headers", "--mode", "stack", "--no-wrap", "HEAD",
     )
     pid = hunk_pid(diff_pane)
     run(

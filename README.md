@@ -91,8 +91,9 @@ command also requires the `herdr` and `hunk` executables:
 hunkmap --repo /path/to/repo herdr
 ```
 
-It opens a chapter-organized Review Rail beside Hunk. Hunk receives only the
-selected review unit, so scrolling a long patch cannot move the semantic map.
+It opens a chapter-organized Review Rail beside Hunk. hunkmap materializes only
+the selected review unit in a temporary Git source, so Hunk 0.19 can reload it
+as a normal diff and scrolling a long patch cannot move the semantic map.
 
 ```text
 j/k or wheel   previous / next unit
