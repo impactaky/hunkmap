@@ -13,6 +13,15 @@ uv tool install .
 Use `uv tool install --editable .` for a development checkout whose CLI should
 follow local source changes.
 
+## Agent skill
+
+The repository includes an English, environment-independent agent skill at
+[`skills/review-with-hunkmap`](skills/review-with-hunkmap). Install or link that
+directory using your agent's normal skill-discovery mechanism, then invoke
+`$review-with-hunkmap` to prepare a complete semantic Review Map. The core
+workflow needs the `hunkmap` CLI; opening the interactive Review Rail also needs
+`herdr` and `hunk` on `PATH`.
+
 ## Quick start
 
 ```bash

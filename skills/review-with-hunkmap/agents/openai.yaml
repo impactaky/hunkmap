@@ -1,0 +1,4 @@
+interface:
+  display_name: "Review with hunkmap"
+  short_description: "Build complete semantic review maps for Git diffs"
+  default_prompt: "Use $review-with-hunkmap to organize the current Git diff into a complete semantic review map."
