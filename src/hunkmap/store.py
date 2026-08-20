@@ -249,6 +249,32 @@ class ReviewProject:
             stale=stale,
         )
 
+    def semantic_issues(self) -> tuple[str, ...]:
+        manifest = self.load_manifest()
+        issues: list[str] = []
+        if not isinstance(manifest.get("goal"), str) or not manifest["goal"].strip():
+            issues.append("goal is empty")
+        for entry in manifest.get("hunks", []):
+            unit_id = entry.get("id") or "unknown"
+            group = entry.get("group")
+            if not isinstance(group, str) or not group.strip() or group == "Unassigned":
+                issues.append(f"{unit_id}: chapter is unassigned")
+            label = entry.get("label")
+            path = entry.get("path")
+            ordinal = entry.get("ordinal")
+            default_label = (
+                f"{Path(path).name} h{ordinal + 1}"
+                if isinstance(path, str) and isinstance(ordinal, int)
+                else None
+            )
+            if not isinstance(label, str) or not label.strip() or label == default_label:
+                issues.append(f"{unit_id}: label is unset")
+            for field in ("why", "safety", "evidence"):
+                value = entry.get(field)
+                if not isinstance(value, str) or not value.strip():
+                    issues.append(f"{unit_id}: {field} is empty")
+        return tuple(issues)
+
     def resolve(self, selector: str) -> dict[str, Any]:
         entries = self.load_manifest()["hunks"]
         if selector.isdigit():

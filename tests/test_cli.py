@@ -37,6 +37,14 @@ class CliTest(unittest.TestCase):
             state_dir = repo / ".git" / "hunkmap"
             initial = json.loads((state_dir / "manifest.json").read_text())
             first, second = initial["hunks"]
+
+            not_ready = io.StringIO()
+            with redirect_stdout(not_ready):
+                self.assertEqual(main(["--repo", str(repo), "check", "--ready"]), 1)
+            self.assertIn("SEMANTIC    ", not_ready.getvalue())
+            self.assertIn("goal is empty", not_ready.getvalue())
+            self.assertIn("label is unset", not_ready.getvalue())
+
             document = {
                 "goal": "Ship one coherent result",
                 "chapters": [
@@ -76,6 +84,11 @@ class CliTest(unittest.TestCase):
             self.assertEqual([item["group"] for item in applied["hunks"]], [
                 "Second purpose first", "First purpose second",
             ])
+
+            ready = io.StringIO()
+            with redirect_stdout(ready):
+                self.assertEqual(main(["--repo", str(repo), "check", "--ready"]), 0)
+            self.assertIn("SEMANTIC    ready", ready.getvalue())
 
             before_invalid = (state_dir / "manifest.json").read_bytes()
             invalid_maps: list[tuple[dict, str]] = []

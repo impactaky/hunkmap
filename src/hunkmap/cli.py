@@ -14,8 +14,8 @@ def project_from(args: argparse.Namespace) -> ReviewProject:
     return ReviewProject.discover(args.repo, args.state_dir)
 
 
-def coverage_text(project: ReviewProject) -> str:
-    coverage = project.coverage()
+def coverage_text(project: ReviewProject, coverage=None) -> str:
+    coverage = coverage or project.coverage()
     return "\n".join((
         f"FILES       {coverage.files_mapped}/{coverage.files_total}",
         f"HUNKS       {coverage.hunks_mapped}/{coverage.hunks_total}",
@@ -68,7 +68,8 @@ def build_parser() -> argparse.ArgumentParser:
     sync.add_argument("--base", default="HEAD", help="base used only when initializing a new review map")
 
     sub.add_parser("refresh", help="refresh the snapshot and preserve unchanged annotations")
-    sub.add_parser("check", help="fail unless coverage is exact and the diff is current")
+    check = sub.add_parser("check", help="fail unless coverage is exact and the diff is current")
+    check.add_argument("--ready", action="store_true", help="also require complete semantic metadata")
     sub.add_parser("status", help="show coverage and review progress")
     sub.add_parser("list", help="list review units")
 
@@ -125,8 +126,14 @@ def main(argv: list[str] | None = None) -> int:
             print(f"Refreshed {project.state_dir}")
             print(coverage_text(project))
         elif args.command == "check":
-            print(coverage_text(project))
-            return 0 if project.coverage().ok else 1
+            coverage = project.coverage()
+            print(coverage_text(project, coverage))
+            issues = project.semantic_issues() if args.ready else ()
+            if args.ready:
+                print(f"SEMANTIC    {'ready' if not issues else f'{len(issues)} issue(s)'}")
+                for issue in issues:
+                    print(f"  - {issue}")
+            return 0 if coverage.ok and not issues else 1
         elif args.command == "status":
             state = project.load_state()
             print(coverage_text(project))

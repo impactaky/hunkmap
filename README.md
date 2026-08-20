@@ -78,6 +78,10 @@ empty fields reject the whole document without changing the manifest. Omit the
 path to read JSON from stdin. `goal` and `annotate` remain available for focused
 manual edits.
 
+Use `check --ready` before opening a review. It keeps the exact/current diff
+checks and additionally rejects an empty goal, unassigned chapters, generated
+placeholder labels, and empty Why, Safety, or Evidence fields.
+
 ## Interactive review
 
 The CLI uses Textual for its interactive Review Rail. The optional `herdr`
@@ -102,4 +106,4 @@ i              Why / Safety / Evidence
 Textual provides the rail's keyboard bindings, mouse interaction, scrolling,
 layout, and terminal restoration. The rail checks the live diff periodically.
 If it changes after snapshotting, the header becomes `DIFF STALE` and reviewed
-state cannot be changed until `hunkmap refresh` is run.
+state cannot be changed until `hunkmap sync` is run.
