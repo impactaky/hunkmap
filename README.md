@@ -4,6 +4,15 @@
 coverage is mechanically checked. Review state is attached to content-derived
 hunk IDs, so changed hunks lose their reviewed status after refresh.
 
+## Install
+
+```bash
+uv tool install .
+```
+
+Use `uv tool install --editable .` for a development checkout whose CLI should
+follow local source changes.
+
 ## Quick start
 
 ```bash
