@@ -55,6 +55,9 @@ def build_parser() -> argparse.ArgumentParser:
     init = sub.add_parser("init", help="snapshot the current diff")
     init.add_argument("--base", default="HEAD")
 
+    sync = sub.add_parser("sync", help="initialize or refresh the current diff snapshot")
+    sync.add_argument("--base", default="HEAD", help="base used only when initializing a new review map")
+
     sub.add_parser("refresh", help="refresh the snapshot and preserve unchanged annotations")
     sub.add_parser("check", help="fail unless coverage is exact and the diff is current")
     sub.add_parser("status", help="show coverage and review progress")
@@ -95,6 +98,16 @@ def main(argv: list[str] | None = None) -> int:
             project.initialize(args.base)
             print(f"Initialized {project.state_dir}")
             print(coverage_text(project))
+        elif args.command == "sync":
+            if project.exists():
+                project.refresh()
+                action = "Refreshed"
+            else:
+                project.initialize(args.base)
+                action = "Initialized"
+            print(f"{action} {project.state_dir}")
+            print(coverage_text(project))
+            print(f"UNITS       {len(project.load_manifest()['hunks'])}")
         elif args.command == "refresh":
             project.refresh()
             print(f"Refreshed {project.state_dir}")

@@ -7,7 +7,7 @@ hunk IDs, so changed hunks lose their reviewed status after refresh.
 ## Quick start
 
 ```bash
-uv run hunkmap --repo /path/to/repo init --base HEAD
+uv run hunkmap --repo /path/to/repo sync --base HEAD
 uv run hunkmap --repo /path/to/repo check
 uv run hunkmap --repo /path/to/repo list
 uv run hunkmap --repo /path/to/repo annotate 1 \
@@ -48,8 +48,11 @@ other hunk-less file diffs become one file-level unit, so they cannot disappear
 from coverage. Untracked files are included; a worktree-local state directory is
 excluded from its own snapshot.
 
-Use `refresh` after the diff changes. Annotations and reviewed state survive
-only for unchanged hunk IDs.
+`sync` initializes a missing review map with `--base` and otherwise refreshes
+the existing map with its recorded base. It is safe to use as the normal entry
+point each time. Annotations and reviewed state survive only for unchanged hunk
+IDs. `init` and `refresh` remain available when the explicit distinction is
+useful.
 
 ## Interactive review
 
