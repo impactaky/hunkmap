@@ -10,8 +10,7 @@ hunk IDs, so changed hunks lose their reviewed status after refresh.
 uv run hunkmap --repo /path/to/repo sync --base HEAD
 uv run hunkmap --repo /path/to/repo check
 uv run hunkmap --repo /path/to/repo list
-uv run hunkmap --repo /path/to/repo annotate 1 \
-  --group "Rollback" --label "旧treeを復旧" --why "切替失敗で成功済み環境を失わないため"
+uv run hunkmap --repo /path/to/repo apply-map /tmp/hunkmap-review-map.json
 uv run hunkmap --repo /path/to/repo review 1
 uv run hunkmap --repo /path/to/repo context
 uv run hunkmap --repo /path/to/repo herdr
@@ -53,6 +52,31 @@ the existing map with its recorded base. It is safe to use as the normal entry
 point each time. Annotations and reviewed state survive only for unchanged hunk
 IDs. `init` and `refresh` remain available when the explicit distinction is
 useful.
+
+Apply the complete semantic map atomically from JSON. Chapter and unit order in
+the document becomes the Review Rail order:
+
+```json
+{
+  "goal": "Keep the previous environment usable when replacement fails",
+  "chapters": [{
+    "name": "Rollback",
+    "units": [{
+      "id": "hm-0123456789abcdef",
+      "label": "Restore the old tree",
+      "why": "A failed switch must not discard the last successful environment",
+      "safety": "Only the staged replacement is removed",
+      "evidence": "Rollback integration test passes"
+    }]
+  }]
+}
+```
+
+Every current review unit must occur exactly once, and all semantic fields must
+be non-empty. Unknown or duplicate IDs, missing units, malformed chapters, or
+empty fields reject the whole document without changing the manifest. Omit the
+path to read JSON from stdin. `goal` and `annotate` remain available for focused
+manual edits.
 
 ## Interactive review
 

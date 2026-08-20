@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from contextlib import redirect_stdout
+from copy import deepcopy
+from contextlib import redirect_stderr, redirect_stdout
 import io
 import json
 from pathlib import Path
@@ -16,6 +17,102 @@ def git(repo: Path, *args: str) -> None:
 
 
 class CliTest(unittest.TestCase):
+    def test_apply_map_is_complete_ordered_and_atomic(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            repo = root / "repo"
+            repo.mkdir()
+            git(repo, "init", "--quiet")
+            git(repo, "config", "user.email", "test@example.com")
+            git(repo, "config", "user.name", "Test")
+            for name in ("first.txt", "second.txt"):
+                (repo / name).write_text("before\n")
+            git(repo, "add", ".")
+            git(repo, "commit", "--quiet", "-m", "initial")
+            for name in ("first.txt", "second.txt"):
+                (repo / name).write_text("after\n")
+
+            with redirect_stdout(io.StringIO()):
+                self.assertEqual(main(["--repo", str(repo), "sync"]), 0)
+            state_dir = repo / ".git" / "hunkmap"
+            initial = json.loads((state_dir / "manifest.json").read_text())
+            first, second = initial["hunks"]
+            document = {
+                "goal": "Ship one coherent result",
+                "chapters": [
+                    {
+                        "name": "Second purpose first",
+                        "units": [{
+                            "id": second["id"],
+                            "label": "Change second",
+                            "why": "Second drives the review order",
+                            "safety": "Only second.txt changes",
+                            "evidence": "Fixture covers second.txt",
+                        }],
+                    },
+                    {
+                        "name": "First purpose second",
+                        "units": [{
+                            "id": first["id"],
+                            "label": "Change first",
+                            "why": "First follows the semantic dependency",
+                            "safety": "Only first.txt changes",
+                            "evidence": "Fixture covers first.txt",
+                        }],
+                    },
+                ],
+            }
+            map_path = root / "review-map.json"
+            map_path.write_text(json.dumps(document))
+
+            output = io.StringIO()
+            with redirect_stdout(output):
+                self.assertEqual(main(["--repo", str(repo), "apply-map", str(map_path)]), 0)
+            self.assertIn("Applied 2 chapters to 2 review units", output.getvalue())
+
+            applied = json.loads((state_dir / "manifest.json").read_text())
+            self.assertEqual(applied["goal"], document["goal"])
+            self.assertEqual([item["id"] for item in applied["hunks"]], [second["id"], first["id"]])
+            self.assertEqual([item["group"] for item in applied["hunks"]], [
+                "Second purpose first", "First purpose second",
+            ])
+
+            before_invalid = (state_dir / "manifest.json").read_bytes()
+            invalid_maps: list[tuple[dict, str]] = []
+
+            missing = deepcopy(document)
+            missing["chapters"].pop()
+            invalid_maps.append((missing, "missing review units"))
+
+            duplicate = deepcopy(document)
+            duplicate["chapters"][1]["units"][0] = deepcopy(duplicate["chapters"][0]["units"][0])
+            invalid_maps.append((duplicate, "duplicate review unit"))
+
+            unknown = deepcopy(document)
+            unknown["chapters"][0]["units"][0]["id"] = "hm-unknown"
+            invalid_maps.append((unknown, "unknown review unit"))
+
+            empty = deepcopy(document)
+            empty["chapters"][0]["units"][0]["why"] = " "
+            invalid_maps.append((empty, "must be a non-empty string"))
+
+            for invalid, expected_error in invalid_maps:
+                with self.subTest(expected_error=expected_error):
+                    map_path.write_text(json.dumps(invalid))
+                    errors = io.StringIO()
+                    with redirect_stderr(errors):
+                        self.assertEqual(main(["--repo", str(repo), "apply-map", str(map_path)]), 2)
+                    self.assertIn(expected_error, errors.getvalue())
+                    self.assertEqual((state_dir / "manifest.json").read_bytes(), before_invalid)
+
+            (repo / "first.txt").write_text("changed again\n")
+            map_path.write_text(json.dumps(document))
+            errors = io.StringIO()
+            with redirect_stderr(errors):
+                self.assertEqual(main(["--repo", str(repo), "apply-map", str(map_path)]), 2)
+            self.assertIn("diff is stale", errors.getvalue())
+            self.assertEqual((state_dir / "manifest.json").read_bytes(), before_invalid)
+
     def test_sync_initializes_then_refreshes_and_preserves_review_map(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             repo = Path(temporary)

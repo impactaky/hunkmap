@@ -107,6 +107,12 @@ def _atomic_json(path: Path, value: Any) -> None:
     _atomic_bytes(path, (json.dumps(value, ensure_ascii=False, indent=2) + "\n").encode())
 
 
+def _required_text(value: Any, label: str) -> str:
+    if not isinstance(value, str) or not value.strip():
+        raise HunkMapError(f"{label} must be a non-empty string")
+    return value.strip()
+
+
 def _entry(unit: DiffUnit, previous: dict[str, Any] | None = None) -> dict[str, Any]:
     prior = previous or {}
     return {
@@ -286,6 +292,66 @@ class ReviewProject:
         manifest = self.load_manifest()
         manifest["goal"] = goal
         _atomic_json(self.manifest_path, manifest)
+
+    def apply_map(self, document: Any) -> tuple[int, int]:
+        if not self.coverage().ok:
+            raise HunkMapError("coverage is incomplete or the diff is stale; run sync")
+        manifest = self.load_manifest()
+        if not isinstance(document, dict):
+            raise HunkMapError("review map must be a JSON object")
+        if set(document) != {"goal", "chapters"}:
+            raise HunkMapError("review map must contain only goal and chapters")
+
+        goal = _required_text(document["goal"], "goal")
+        chapters = document["chapters"]
+        if not isinstance(chapters, list) or not chapters:
+            raise HunkMapError("chapters must be a non-empty array")
+
+        existing = {entry["id"]: entry for entry in manifest["hunks"]}
+        seen_ids: set[str] = set()
+        seen_chapters: set[str] = set()
+        mapped: list[dict[str, Any]] = []
+        unit_fields = {"id", "label", "why", "safety", "evidence"}
+
+        for chapter_index, chapter in enumerate(chapters, 1):
+            prefix = f"chapters[{chapter_index}]"
+            if not isinstance(chapter, dict) or set(chapter) != {"name", "units"}:
+                raise HunkMapError(f"{prefix} must contain only name and units")
+            name = _required_text(chapter["name"], f"{prefix}.name")
+            if name in seen_chapters:
+                raise HunkMapError(f"duplicate chapter: {name}")
+            seen_chapters.add(name)
+            units = chapter["units"]
+            if not isinstance(units, list) or not units:
+                raise HunkMapError(f"{prefix}.units must be a non-empty array")
+
+            for unit_index, unit in enumerate(units, 1):
+                unit_prefix = f"{prefix}.units[{unit_index}]"
+                if not isinstance(unit, dict) or set(unit) != unit_fields:
+                    raise HunkMapError(
+                        f"{unit_prefix} must contain only id, label, why, safety, and evidence"
+                    )
+                unit_id = _required_text(unit["id"], f"{unit_prefix}.id")
+                if unit_id not in existing:
+                    raise HunkMapError(f"unknown review unit: {unit_id}")
+                if unit_id in seen_ids:
+                    raise HunkMapError(f"duplicate review unit: {unit_id}")
+                seen_ids.add(unit_id)
+                mapped.append({
+                    **existing[unit_id],
+                    "group": name,
+                    "label": _required_text(unit["label"], f"{unit_prefix}.label"),
+                    "why": _required_text(unit["why"], f"{unit_prefix}.why"),
+                    "safety": _required_text(unit["safety"], f"{unit_prefix}.safety"),
+                    "evidence": _required_text(unit["evidence"], f"{unit_prefix}.evidence"),
+                })
+
+        missing = set(existing) - seen_ids
+        if missing:
+            raise HunkMapError("missing review units: " + ", ".join(sorted(missing)))
+
+        _atomic_json(self.manifest_path, {**manifest, "goal": goal, "hunks": mapped})
+        return len(chapters), len(mapped)
 
     def write_state(self, state: dict[str, Any]) -> None:
         _atomic_json(self.state_path, state)

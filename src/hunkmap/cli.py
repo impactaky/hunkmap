@@ -46,6 +46,15 @@ def context_markdown(project: ReviewProject, include_patches: bool) -> str:
     return "\n".join(lines) + "\n"
 
 
+def read_json(path: str) -> object:
+    try:
+        if path == "-":
+            return json.load(sys.stdin)
+        return json.loads(Path(path).read_text())
+    except (OSError, json.JSONDecodeError) as error:
+        raise HunkMapError(f"could not read review map: {error}") from error
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="hunkmap", description="Coverage-checked semantic Git diff review")
     parser.add_argument("--repo", type=Path, help="path inside the Git repository")
@@ -76,6 +85,9 @@ def build_parser() -> argparse.ArgumentParser:
 
     goal = sub.add_parser("goal", help="set the review goal")
     goal.add_argument("text")
+
+    apply_map = sub.add_parser("apply-map", help="atomically apply a complete semantic review map")
+    apply_map.add_argument("path", nargs="?", default="-", help="JSON file (default: stdin)")
 
     review = sub.add_parser("review", help="mark a unit reviewed")
     review.add_argument("selector")
@@ -135,6 +147,9 @@ def main(argv: list[str] | None = None) -> int:
         elif args.command == "goal":
             project.set_goal(args.text)
             print("Goal updated")
+        elif args.command == "apply-map":
+            chapters, units = project.apply_map(read_json(args.path))
+            print(f"Applied {chapters} chapters to {units} review units")
         elif args.command == "review":
             entry = project.set_reviewed(args.selector, True)
             print(f"Reviewed {entry['id']}")
