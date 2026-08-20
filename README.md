@@ -84,6 +84,9 @@ goal, unassigned chapters, generated placeholder labels, and empty Why, Safety,
 or Evidence fields. It opens the Review Rail only when all checks pass. Use
 `check --ready` to run the same validation without opening anything.
 
+`context --patches` emits the goal, chapter order, review state, Label, Why,
+Safety, Evidence, and every raw patch as one reviewer-ready document.
+
 ## Interactive review
 
 The CLI uses Textual for its interactive Review Rail. `open` and the lower-level

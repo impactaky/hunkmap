@@ -109,6 +109,15 @@ class CliTest(unittest.TestCase):
             self.addCleanup(redraft_path.unlink, missing_ok=True)
             self.assertEqual(json.loads(redraft_path.read_text()), document)
 
+            context = io.StringIO()
+            with redirect_stdout(context):
+                self.assertEqual(main(["--repo", str(repo), "context", "--patches"]), 0)
+            rendered_context = context.getvalue()
+            self.assertIn("Why: Second drives the review order", rendered_context)
+            self.assertIn("Safety: Only second.txt changes", rendered_context)
+            self.assertIn("Evidence: Fixture covers second.txt", rendered_context)
+            self.assertIn("```diff", rendered_context)
+
             ready = io.StringIO()
             with redirect_stdout(ready):
                 self.assertEqual(main(["--repo", str(repo), "check", "--ready"]), 0)

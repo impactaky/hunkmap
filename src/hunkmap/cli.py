@@ -52,7 +52,12 @@ def context_markdown(project: ReviewProject, include_patches: bool) -> str:
         lines.extend(("", f"## {group}", ""))
         for entry in entries:
             mark = "x" if entry["id"] in reviewed else " "
-            lines.append(f"- [{mark}] `{entry['id']}` {entry['label']} — {entry.get('why') or 'WHY未設定'}")
+            lines.extend((
+                f"- [{mark}] `{entry['id']}` {entry['label']}",
+                f"  - Why: {entry.get('why') or '未設定'}",
+                f"  - Safety: {entry.get('safety') or '未設定'}",
+                f"  - Evidence: {entry.get('evidence') or '未設定'}",
+            ))
             if include_patches:
                 lines.extend(("", "```diff", units[entry["id"]].patch.decode("utf-8", "replace").rstrip(), "```", ""))
     return "\n".join(lines) + "\n"
