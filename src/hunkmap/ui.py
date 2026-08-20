@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import argparse
+import asyncio
 from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any, ClassVar
 
@@ -68,8 +70,12 @@ def write_patch(project: ReviewProject, runtime: Path, index: int) -> Path:
     unit = project.unit_for(entry["id"])
     path = runtime / "selected.patch"
     temporary = runtime / ".selected.patch.tmp"
-    temporary.write_bytes(unit.patch)
-    temporary.replace(path)
+    try:
+        temporary.write_bytes(unit.patch)
+        temporary.replace(path)
+    except BaseException:
+        temporary.unlink(missing_ok=True)
+        raise
     return path
 
 
@@ -256,6 +262,14 @@ class ReviewRailApp(App[None]):
         self.coverage_ok = True
         self.message = ""
         self._updating_rows = False
+        self._reload_generation = 0
+        self._reload_pending: tuple[int, int] | None = None
+        self._reload_running = False
+        self._coverage_running = False
+        self._background = ThreadPoolExecutor(
+            max_workers=2,
+            thread_name_prefix="hunkmap",
+        )
 
     def compose(self) -> ComposeResult:
         yield Static(id="goal")
@@ -269,11 +283,15 @@ class ReviewRailApp(App[None]):
         )
 
     def on_mount(self) -> None:
-        self._reload_current_patch()
         self._refresh_header()
         self._rebuild_rows()
+        self._queue_patch_reload(self.current)
         self.query_one("#rail", ListView).focus()
         self.set_interval(1.0, self._check_coverage)
+
+    def on_unmount(self) -> None:
+        self._reload_pending = None
+        self._background.shutdown(wait=True, cancel_futures=True)
 
     def _group_for(self, index: int) -> str:
         return self.entries[index].get("group") or "Unassigned"
@@ -281,15 +299,81 @@ class ReviewRailApp(App[None]):
     def _group_rows(self) -> list[tuple[str, list[int]]]:
         return groups(self.entries)
 
-    def _reload_current_patch(self) -> None:
-        patch = write_patch(self.project, self.runtime, self.current)
-        self.patch_reloader(self.hunk, self.session_id, patch)
+    def _reload_patch(self, index: int) -> Exception | None:
+        try:
+            patch = write_patch(self.project, self.runtime, index)
+            self.patch_reloader(self.hunk, self.session_id, patch)
+        except Exception as error:
+            return error
+        return None
+
+    def _coverage_ok(self) -> bool:
+        try:
+            return self.project.coverage().ok
+        except Exception:
+            return False
+
+    def _queue_patch_reload(self, index: int) -> None:
+        self._reload_generation += 1
+        self._reload_pending = (self._reload_generation, index)
+        if self._reload_running:
+            return
+        self._reload_running = True
+        self.run_worker(
+            self._drain_patch_reloads(),
+            name="hunk-reload",
+            group="hunk-reload",
+            exit_on_error=False,
+        )
+
+    async def _drain_patch_reloads(self) -> None:
+        try:
+            while self._reload_pending is not None:
+                generation, index = self._reload_pending
+                self._reload_pending = None
+                try:
+                    error = await asyncio.get_running_loop().run_in_executor(
+                        self._background,
+                        self._reload_patch,
+                        index,
+                    )
+                except Exception as scheduling_error:
+                    error = scheduling_error
+                if (
+                    error is not None
+                    and self.is_running
+                    and generation == self._reload_generation
+                ):
+                    self.message = f"Hunk reload failed — {error}"
+                    self._refresh_header()
+        finally:
+            self._reload_running = False
 
     def _check_coverage(self) -> None:
-        ok = self.project.coverage().ok
-        if ok != self.coverage_ok:
-            self.coverage_ok = ok
-            self._refresh_header()
+        if self._coverage_running:
+            return
+        self._coverage_running = True
+        self.run_worker(
+            self._check_coverage_in_background(),
+            name="coverage",
+            group="coverage",
+            exit_on_error=False,
+        )
+
+    async def _check_coverage_in_background(self) -> None:
+        try:
+            try:
+                ok = await asyncio.get_running_loop().run_in_executor(
+                    self._background,
+                    self._coverage_ok,
+                )
+            except Exception:
+                ok = False
+            if self.is_running and ok != self.coverage_ok:
+                self.coverage_ok = ok
+                self._refresh_header()
+        finally:
+            self._coverage_running = False
 
     def _refresh_header(self) -> None:
         goal = self.manifest.get("goal") or "Not set — use `hunkmap goal ...`"
@@ -382,8 +466,8 @@ class ReviewRailApp(App[None]):
         self.current = index
         self.expanded = self._group_for(index)
         self.message = ""
-        self._reload_current_patch()
         self._rebuild_rows()
+        self._queue_patch_reload(index)
 
     def _set_reviewed(self, reviewed: bool, *, advance: bool = False) -> None:
         if not self.coverage_ok:
