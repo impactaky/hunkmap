@@ -200,6 +200,39 @@ class CliTest(unittest.TestCase):
             self.assertEqual(manifest["hunks"][0]["why"], "Needed")
             self.assertEqual(state["reviewed"], [manifest["hunks"][0]["id"]])
 
+    def test_review_and_unreview_require_a_current_diff(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            repo = Path(temporary)
+            git(repo, "init", "--quiet")
+            git(repo, "config", "user.email", "test@example.com")
+            git(repo, "config", "user.name", "Test")
+            (repo / "file.txt").write_text("before\n")
+            git(repo, "add", "file.txt")
+            git(repo, "commit", "--quiet", "-m", "initial")
+            (repo / "file.txt").write_text("after\n")
+
+            with redirect_stdout(io.StringIO()):
+                self.assertEqual(main(["--repo", str(repo), "sync"]), 0)
+                self.assertEqual(main(["--repo", str(repo), "review", "1"]), 0)
+                self.assertEqual(main(["--repo", str(repo), "unreview", "1"]), 0)
+                self.assertEqual(main(["--repo", str(repo), "review", "1"]), 0)
+
+            state_path = repo / ".git" / "hunkmap" / "state.json"
+            reviewed_state = json.loads(state_path.read_text())
+
+            (repo / "file.txt").write_text("changed again\n")
+            for command in ("review", "unreview"):
+                with self.subTest(command=command):
+                    errors = io.StringIO()
+                    with redirect_stderr(errors):
+                        self.assertEqual(main(["--repo", str(repo), command, "1"]), 2)
+                    self.assertIn("diff is stale", errors.getvalue())
+                    self.assertEqual(json.loads(state_path.read_text()), reviewed_state)
+
+            with redirect_stdout(io.StringIO()):
+                self.assertEqual(main(["--repo", str(repo), "sync"]), 0)
+                self.assertEqual(main(["--repo", str(repo), "unreview", "1"]), 0)
+
     def test_init_annotate_review_and_check(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             repo = Path(temporary)

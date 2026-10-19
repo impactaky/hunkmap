@@ -303,6 +303,8 @@ class ReviewProject:
         return entry
 
     def set_reviewed(self, selector: str, reviewed: bool) -> dict[str, Any]:
+        if not self.coverage().ok:
+            raise HunkMapError("coverage is incomplete or the diff is stale; run sync")
         entry = self.resolve(selector)
         state = self.load_state()
         values = set(state.get("reviewed", []))
