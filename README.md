@@ -1,8 +1,11 @@
 # hunkmap
 
 `hunkmap` turns a live Git diff into a semantic review map whose raw-hunk
-coverage is mechanically checked. Review state is attached to content-derived
-hunk IDs, so changed hunks lose their reviewed status after refresh.
+coverage is mechanically checked. Review state is attached to unit IDs built
+from each review unit's path, its order within the file, and its body including
+the `@@` line-number header. A refresh keeps reviewed status only while all of
+these stay the same, so editing a unit — or an earlier unit in the same file —
+can drop the reviewed status of units that did not change themselves.
 
 ## Install
 
@@ -25,13 +28,15 @@ workflow needs the `hunkmap` CLI; opening the interactive Review Rail also needs
 ## Quick start
 
 ```bash
-uv run hunkmap --repo /path/to/repo sync --base HEAD
-uv run hunkmap --repo /path/to/repo context --patches
-uv run hunkmap --repo /path/to/repo draft-map
+hunkmap --repo /path/to/repo sync --base HEAD
+hunkmap --repo /path/to/repo context --patches
+hunkmap --repo /path/to/repo draft-map
 # Edit the printed temporary JSON path.
-uv run hunkmap --repo /path/to/repo apply-map /tmp/hunkmap-review-map.json
-uv run hunkmap --repo /path/to/repo open
+hunkmap --repo /path/to/repo apply-map <path printed by draft-map>
+hunkmap --repo /path/to/repo open
 ```
+
+From a development checkout, run the same commands with `uv run` in front.
 
 The default local state is kept under Git's metadata directory, so it does not
 pollute the reviewed worktree. In a normal checkout this is `.git/hunkmap/`; Git
@@ -108,15 +113,16 @@ Safety, Evidence, and every raw patch as one reviewer-ready document.
 ## Interactive review
 
 The CLI uses Textual for its interactive Review Rail. `open` and the lower-level
-`herdr` command require the `herdr` and `hunk` executables:
+`herdr` command require the `herdr` and `hunk` executables, and `hunk` must
+support `hunk session reload`:
 
 ```bash
 hunkmap --repo /path/to/repo open
 ```
 
 It opens a chapter-organized Review Rail beside Hunk. hunkmap materializes only
-the selected review unit in a temporary Git source, so Hunk 0.19 can reload it
-as a normal diff and scrolling a long patch cannot move the semantic map.
+the selected review unit in a temporary Git source, so Hunk can reload it as a
+normal diff and scrolling a long patch cannot move the semantic map.
 
 ```text
 j/k or wheel   previous / next unit
@@ -129,5 +135,6 @@ i              Why / Safety / Evidence
 
 Textual provides the rail's keyboard bindings, mouse interaction, scrolling,
 layout, and terminal restoration. The rail checks the live diff periodically.
-If it changes after snapshotting, the header becomes `DIFF STALE` and reviewed
-state cannot be changed until `hunkmap sync` is run.
+If it changes after snapshotting, the header becomes `DIFF STALE`, and neither
+the rail nor `hunkmap review` / `hunkmap unreview` will change reviewed state
+until `hunkmap sync` is run.

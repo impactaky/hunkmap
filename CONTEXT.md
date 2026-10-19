@@ -43,8 +43,10 @@ interpreted.
 _Avoid_: Cache, saved diff
 
 **Unit Identity**:
-A content-derived identity for one Review Unit. Editing the unit changes its
-identity; moving through review without changing it does not.
+An identity derived from a Review Unit's content and position: its path, its
+order within the file, and its body including the `@@` line-number header.
+Editing the unit, or an earlier unit in the same file, changes its identity;
+moving through review without editing does not.
 _Avoid_: Index, row number
 
 **Exact Coverage**:
